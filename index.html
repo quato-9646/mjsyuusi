@@ -6,7 +6,7 @@
     <title>麻雀収支計算アプリ</title>
     <style>
         body { font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', Meiryo, sans-serif; background-color: #f4f7f6; color: #333; margin: 0; padding: 20px; }
-        .container { max-width: 800px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .container { max-width: 900px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         h1, h2 { text-align: center; color: #2c3e50; }
         .settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 20px; }
         .setting-item { display: flex; flex-direction: column; }
@@ -15,16 +15,24 @@
         .players-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; background: #eef2f5; padding: 15px; border-radius: 8px; }
         .player-col { display: flex; flex-direction: column; gap: 8px; }
         .player-col input { width: 100%; box-sizing: border-box; }
-        button { background-color: #27ae60; color: white; border: none; padding: 12px 20px; font-size: 1.1em; border-radius: 4px; cursor: pointer; width: 100%; transition: background 0.3s; }
+        .btn-group { display: flex; gap: 10px; }
+        button { background-color: #27ae60; color: white; border: none; padding: 12px 20px; font-size: 1.1em; border-radius: 4px; cursor: pointer; flex: 1; transition: background 0.3s; }
         button:hover { background-color: #219150; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        button.cancel-btn { background-color: #7f8c8d; }
+        button.cancel-btn:hover { background-color: #95a5a6; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; min-width: 600px; }
         th, td { border: 1px solid #ddd; padding: 10px; text-align: center; }
         th { background-color: #34495e; color: white; font-size: 0.9em; }
+        .detail-text { display: block; font-size: 0.75em; color: #666; margin-top: 4px; }
         .totals-row { font-weight: bold; background-color: #fdf2e9; }
         .money-row { font-weight: bold; background-color: #e8f8f5; color: #16a085; font-size: 1.2em; }
-        .delete-btn { background-color: #e74c3c; padding: 5px 10px; font-size: 0.8em; }
+        .action-btns { display: flex; gap: 5px; justify-content: center; }
+        .edit-btn { background-color: #2980b9; padding: 5px 10px; font-size: 0.8em; width: auto; }
+        .edit-btn:hover { background-color: #3498db; }
+        .delete-btn { background-color: #e74c3c; padding: 5px 10px; font-size: 0.8em; width: auto; }
         .delete-btn:hover { background-color: #c0392b; }
-        .warning { color: #e74c3c; font-size: 0.9em; text-align: center; margin-bottom: 10px; min-height: 1.2em; }
+        .live-check { text-align: center; font-weight: bold; margin-bottom: 15px; padding: 8px; border-radius: 4px; background-color: #fadbd8; color: #c0392b; display: none; }
+        .live-check.valid { background-color: #d4efdf; color: #27ae60; }
     </style>
 </head>
 <body>
@@ -36,11 +44,11 @@
     <div class="settings-grid">
         <div class="setting-item">
             <label>レート (1pt = X)</label>
-            <input type="number" id="rate" value="30">
+            <input type="number" id="rate" value="30" oninput="renderTable()">
         </div>
         <div class="setting-item">
             <label>開始点 (例:250)</label>
-            <input type="number" id="startScore" value="250">
+            <input type="number" id="startScore" value="250" oninput="autoCalcFourthPlayer()">
         </div>
         <div class="setting-item">
             <label>チップ (1枚 = X pt)</label>
@@ -66,43 +74,47 @@
         </div>
     </div>
 
-    <h2>半荘入力</h2>
-    <div class="warning" id="warningMessage"></div>
-    <div class="players-grid">
+    <h2 id="inputTitle">半荘入力</h2>
+    <div class="live-check" id="liveCheckStatus"></div>
+
+    <div class="players-grid" id="inputSection">
         <div class="player-col">
             <label>プレイヤー1</label>
             <input type="text" id="name0" value="Aさん">
-            <input type="number" id="score0" placeholder="素点 (例: 230)">
-            <input type="number" id="chip0" placeholder="チップ増減">
+            <input type="number" id="score0" placeholder="素点 (例: 230)" oninput="onScoreInput()">
+            <input type="number" id="chip0" placeholder="チップ増減" oninput="checkTotalsLive()">
         </div>
         <div class="player-col">
             <label>プレイヤー2</label>
             <input type="text" id="name1" value="Bさん">
-            <input type="number" id="score1" placeholder="素点 (例: 290)">
-            <input type="number" id="chip1" placeholder="チップ増減">
+            <input type="number" id="score1" placeholder="素点 (例: 290)" oninput="onScoreInput()">
+            <input type="number" id="chip1" placeholder="チップ増減" oninput="checkTotalsLive()">
         </div>
         <div class="player-col">
             <label>プレイヤー3</label>
             <input type="text" id="name2" value="Cさん">
-            <input type="number" id="score2" placeholder="素点 (例: 190)">
-            <input type="number" id="chip2" placeholder="チップ増減">
+            <input type="number" id="score2" placeholder="素点 (例: 190)" oninput="onScoreInput()">
+            <input type="number" id="chip2" placeholder="チップ増減" oninput="checkTotalsLive()">
         </div>
         <div class="player-col">
             <label>プレイヤー4</label>
             <input type="text" id="name3" value="Dさん">
-            <input type="number" id="score3" placeholder="素点 (例: 290)">
-            <input type="number" id="chip3" placeholder="チップ増減">
+            <input type="number" id="score3" placeholder="4人目自動計算" oninput="checkTotalsLive()">
+            <input type="number" id="chip3" placeholder="チップ増減" oninput="checkTotalsLive()">
         </div>
     </div>
 
-    <button onclick="addGame()">この半荘を記録する</button>
+    <div class="btn-group">
+        <button id="submitBtn" onclick="addGame()">この半荘を記録する</button>
+        <button id="cancelBtn" class="cancel-btn" onclick="cancelEdit()" style="display: none;">編集をキャンセル</button>
+    </div>
 
     <h2>成績表</h2>
     <div style="overflow-x: auto;">
         <table id="resultTable">
             <thead>
                 <tr>
-                    <th>局</th>
+                    <th>半荘</th>
                     <th id="th0">Aさん</th>
                     <th id="th1">Bさん</th>
                     <th id="th2">Cさん</th>
@@ -136,6 +148,7 @@
 
 <script>
     let games = [];
+    let editingIndex = -1; // -1の時は新規登録モード、0以上の時は編集モード
 
     // 名前変更時に表のヘッダーも更新する
     for(let i=0; i<4; i++){
@@ -144,8 +157,67 @@
         });
     }
 
+    // 1~3人目の素点が入力されたら4人目を自動計算
+    function onScoreInput() {
+        autoCalcFourthPlayer();
+        checkTotalsLive();
+    }
+
+    function autoCalcFourthPlayer() {
+        const startScore = parseFloat(document.getElementById('startScore').value) || 0;
+        const targetTotal = startScore * 4; // 例: 250 * 4 = 1000
+
+        const s0 = document.getElementById('score0').value;
+        const s1 = document.getElementById('score1').value;
+        const s2 = document.getElementById('score2').value;
+
+        // 3人分がしっかり入力されている場合のみ4人目を自動計算
+        if (s0 !== "" && s1 !== "" && s2 !== "") {
+            const sum3 = parseFloat(s0) + parseFloat(s1) + parseFloat(s2);
+            document.getElementById('score3').value = targetTotal - sum3;
+        }
+    }
+
+    // 入力中の合計値をリアルタイムにチェックして画面に表示
+    function checkTotalsLive() {
+        const startScore = parseFloat(document.getElementById('startScore').value) || 0;
+        const targetScoreTotal = startScore * 4;
+
+        let totalScore = 0;
+        let totalChip = 0;
+        let hasEmpty = false;
+
+        for (let i = 0; i < 4; i++) {
+            let s = document.getElementById(`score${i}`).value;
+            let c = document.getElementById(`chip${i}`).value;
+            if (s === "" || c === "") {
+                hasEmpty = true;
+            }
+            totalScore += parseFloat(s) || 0;
+            totalChip += parseFloat(c) || 0;
+        }
+
+        const statusDiv = document.getElementById('liveCheckStatus');
+        if (hasEmpty) {
+            statusDiv.style.display = "none";
+            return;
+        }
+
+        statusDiv.style.display = "block";
+        if (totalScore === targetScoreTotal && totalChip === 0) {
+            statusDiv.className = "live-check valid";
+            statusDiv.innerText = `【チェックOK】素点合計: ${totalScore} / チップ合計: ${totalChip}`;
+            return true;
+        } else {
+            statusDiv.className = "live-check";
+            statusDiv.innerText = `【不整合あり】素点合計: ${totalScore} (目標:${targetScoreTotal}) / チップ合計: ${totalChip} (目標:0)`;
+            return false;
+        }
+    }
+
     function addGame() {
         const startScore = parseFloat(document.getElementById('startScore').value) || 0;
+        const targetScoreTotal = startScore * 4;
         const chipRate = parseFloat(document.getElementById('chipRate').value) || 0;
         const umas = [
             parseFloat(document.getElementById('uma1').value) || 0,
@@ -170,7 +242,7 @@
             
             totalScore += s;
             totalChip += c;
-            players.push({ index: i, score: s, chip: c, pt: 0 });
+            players.push({ index: i, score: s, chip: c, pt: 0, uma: 0 });
         }
 
         if (hasEmpty) {
@@ -178,50 +250,97 @@
             return;
         }
 
-        const warningDiv = document.getElementById('warningMessage');
-        if (totalScore !== startScore * 4) {
-            warningDiv.innerText = `【注意】素点の合計が ${startScore * 4} になっていません (現在: ${totalScore})`;
-        } else if (totalChip !== 0) {
-            warningDiv.innerText = `【注意】チップの合計が 0 になっていません (現在: ${totalChip})`;
-        } else {
-            warningDiv.innerText = "";
+        // 【自動チェック機能】 合計が合わない場合は処理を中断
+        if (totalScore !== targetScoreTotal || totalChip !== 0) {
+            alert(`【入力エラー】合計値が正しくありません。\n・素点合計: ${totalScore} (目標: ${targetScoreTotal})\n・チップ合計: ${totalChip} (目標: 0)\n値を修正してください。`);
+            return;
         }
 
-        // 素点で降順ソート（同点の場合は入力順＝上家取りの扱い）
+        // 素点で降順ソート（同点の場合は入力順＝上家取り扱い）
         let sorted = [...players].sort((a, b) => b.score - a.score);
 
-        // ポイント計算
+        // 各自のポイントとウマを確定させる
         sorted.forEach((p, rank) => {
-            // 素点浮き沈み分
             let basePt = (p.score - startScore) / 10;
-            // 順位ウマ
             let umaPt = umas[rank];
-            // チップ分
             let chipPt = p.chip * chipRate;
             
-            // 合計ポイント
+            p.uma = umaPt;
             p.pt = basePt + umaPt + chipPt;
         });
 
-        // 元の順番（Aさん〜Dさん）に戻す
+        // 元の順番（プレイヤー1〜4）に戻す
         players.sort((a, b) => a.index - b.index);
 
         let gameRecord = {
+            scores: players.map(p => p.score),
+            chips: players.map(p => p.chip),
+            umas: players.map(p => p.uma),
             pts: players.map(p => p.pt)
         };
-        games.push(gameRecord);
+
+        if (editingIndex === -1) {
+            // 新規追加
+            games.push(gameRecord);
+        } else {
+            // 既存データの更新
+            games[editingIndex] = gameRecord;
+            editingIndex = -1;
+            document.getElementById('submitBtn').innerText = "この半荘を記録する";
+            document.getElementById('cancelBtn').style.display = "none";
+            document.getElementById('inputTitle').innerText = "半荘入力";
+        }
 
         // 入力欄をリセット
         for (let i = 0; i < 4; i++) {
             document.getElementById(`score${i}`).value = '';
             document.getElementById(`chip${i}`).value = '';
         }
+        document.getElementById('liveCheckStatus').style.display = "none";
 
         renderTable();
     }
 
+    // 編集モードにする関数
+    function editGame(index) {
+        editingIndex = index;
+        const game = games[index];
+
+        // データを入力欄に書き戻す
+        for (let i = 0; i < 4; i++) {
+            document.getElementById(`score${i}`).value = game.scores[i];
+            document.getElementById(`chip${i}`).value = game.chips[i];
+        }
+
+        // UIを編集モード用に切り替え
+        document.getElementById('inputTitle').innerText = `${index + 1}半荘目のデータを編集・修正中`;
+        document.getElementById('submitBtn').innerText = "変更を適用して更新する";
+        document.getElementById('cancelBtn').style.display = "inline-block";
+
+        // 入力エリアへスクロール
+        document.getElementById('inputTitle').scrollIntoView({ behavior: 'smooth' });
+        checkTotalsLive();
+    }
+
+    // 編集のキャンセル
+    function cancelEdit() {
+        editingIndex = -1;
+        document.getElementById('submitBtn').innerText = "この半荘を記録する";
+        document.getElementById('cancelBtn').style.display = "none";
+        document.getElementById('inputTitle').innerText = "半荘入力";
+
+        for (let i = 0; i < 4; i++) {
+            document.getElementById(`score${i}`).value = '';
+            document.getElementById(`chip${i}`).value = '';
+        }
+        document.getElementById('liveCheckStatus').style.display = "none";
+    }
+
     function deleteGame(index) {
-        if(confirm("この局の記録を削除しますか？")){
+        if(confirm(`${index + 1}半荘目の記録を削除しますか？`)){
+            if (editingIndex === index) {
+                cancelEdit();
+            }
             games.splice(index, 1);
             renderTable();
         }
@@ -236,23 +355,39 @@
         games.forEach((game, index) => {
             let tr = document.createElement('tr');
             let tdNum = document.createElement('td');
-            tdNum.innerText = `${index + 1}局目`;
+            tdNum.innerText = `${index + 1}半荘目`;
             tr.appendChild(tdNum);
 
             for (let i = 0; i < 4; i++) {
                 let td = document.createElement('td');
-                // 小数点第1位まで表示
                 let pt = (Math.round(game.pts[i] * 10) / 10).toFixed(1);
-                td.innerText = pt > 0 ? `+${pt}` : pt;
+                let ptText = pt > 0 ? `+${pt}` : pt;
+                
+                // チップやウマの表記用符号
+                let cText = game.chips[i] > 0 ? `+${game.chips[i]}` : game.chips[i];
+                let uText = game.umas[i] > 0 ? `+${game.umas[i]}` : game.umas[i];
+
+                // セル内に詳細テキストを埋め込む
+                td.innerHTML = `<strong>${ptText}pt</strong><span class="detail-text">(素点:${game.scores[i]} / チップ:${cText} / ウマ:${uText})</span>`;
                 tr.appendChild(td);
                 totals[i] += game.pts[i];
             }
 
+            // 操作ボタン（編集・削除）
             let tdAction = document.createElement('td');
+            tdAction.className = 'action-btns';
+
+            let editBtn = document.createElement('button');
+            editBtn.className = 'edit-btn';
+            editBtn.innerText = '編集';
+            editBtn.onclick = () => editGame(index);
+
             let delBtn = document.createElement('button');
             delBtn.className = 'delete-btn';
             delBtn.innerText = '削除';
             delBtn.onclick = () => deleteGame(index);
+
+            tdAction.appendChild(editBtn);
             tdAction.appendChild(delBtn);
             tr.appendChild(tdAction);
 
@@ -263,12 +398,10 @@
 
         // 合計と最終収支の更新
         for (let i = 0; i < 4; i++) {
-            // 合計ポイント (小数点第1位まで)
             let totalFixed = (Math.round(totals[i] * 10) / 10).toFixed(1);
             let ptCell = document.getElementById(`totalPt${i}`);
             ptCell.innerText = totalFixed > 0 ? `+${totalFixed}` : totalFixed;
 
-            // 最終収支計算: 小数点以下を切り捨て (Math.trunc) してからレートを掛ける
             let truncated = Math.trunc(parseFloat(totalFixed));
             let finalMoney = truncated * rate;
             let moneyCell = document.getElementById(`money${i}`);
