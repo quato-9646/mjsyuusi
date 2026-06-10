@@ -148,16 +148,14 @@
 
 <script>
     let games = [];
-    let editingIndex = -1; // -1の時は新規登録モード、0以上の時は編集モード
+    let editingIndex = -1;
 
-    // 名前変更時に表のヘッダーも更新する
     for(let i=0; i<4; i++){
         document.getElementById(`name${i}`).addEventListener('input', function(e){
             document.getElementById(`th${i}`).innerText = e.target.value;
         });
     }
 
-    // 1~3人目の素点が入力されたら4人目を自動計算
     function onScoreInput() {
         autoCalcFourthPlayer();
         checkTotalsLive();
@@ -165,20 +163,18 @@
 
     function autoCalcFourthPlayer() {
         const startScore = parseFloat(document.getElementById('startScore').value) || 0;
-        const targetTotal = startScore * 4; // 例: 250 * 4 = 1000
+        const targetTotal = startScore * 4;
 
         const s0 = document.getElementById('score0').value;
         const s1 = document.getElementById('score1').value;
         const s2 = document.getElementById('score2').value;
 
-        // 3人分がしっかり入力されている場合のみ4人目を自動計算
         if (s0 !== "" && s1 !== "" && s2 !== "") {
             const sum3 = parseFloat(s0) + parseFloat(s1) + parseFloat(s2);
             document.getElementById('score3').value = targetTotal - sum3;
         }
     }
 
-    // 入力中の合計値をリアルタイムにチェックして画面に表示
     function checkTotalsLive() {
         const startScore = parseFloat(document.getElementById('startScore').value) || 0;
         const targetScoreTotal = startScore * 4;
@@ -250,27 +246,39 @@
             return;
         }
 
-        // 【自動チェック機能】 合計が合わない場合は処理を中断
         if (totalScore !== targetScoreTotal || totalChip !== 0) {
-            alert(`【入力エラー】合計値が正しくありません。\n・素点合計: ${totalScore} (目標: ${targetScoreTotal})\n・チップ合計: ${totalChip} (目標: 0)\n値を修正してください。`);
+            alert(`【入力エラー】合計値が正しくありません。\n・素点合計: ${totalScore} (目標: ${targetScoreTotal})\n・チップ合計: ${totalChip} (目標: 0)`);
             return;
         }
 
-        // 素点で降順ソート（同点の場合は入力順＝上家取り扱い）
-        let sorted = [...players].sort((a, b) => b.score - a.score);
+        // --- 同点ウマ等分ロジックの追加 ---
+        // 1. 各プレイヤーのスコア一覧を取得し、降順（高い順）にソート
+        let sortedScores = players.map(p => p.score).sort((a, b) => b - a);
 
-        // 各自のポイントとウマを確定させる
-        sorted.forEach((p, rank) => {
+        // 2. プレイヤーごとに「そのスコアがソート順のどこに位置するか」を調べ、同じスコアの枠（ランク）を特定する
+        players.forEach(p => {
+            let rankIndices = [];
+            sortedScores.forEach((score, idx) => {
+                if (score === p.score) {
+                    rankIndices.push(idx); // 同点プレイヤーが占める本来の順位インデックス（0=1着, 1=2着, 2=3着, 3=4着）を全抽出
+                }
+            });
+
+            // 当てはまる順位のウマをすべて合計する
+            let sumUma = 0;
+            rankIndices.forEach(idx => {
+                sumUma += umas[idx];
+            });
+
+            // ウマを同点人数で割る（頭割り）
+            p.uma = sumUma / rankIndices.length;
+
+            // 各自の合計ポイントを算出
             let basePt = (p.score - startScore) / 10;
-            let umaPt = umas[rank];
             let chipPt = p.chip * chipRate;
-            
-            p.uma = umaPt;
-            p.pt = basePt + umaPt + chipPt;
+            p.pt = basePt + p.uma + chipPt;
         });
-
-        // 元の順番（プレイヤー1〜4）に戻す
-        players.sort((a, b) => a.index - b.index);
+        // ---------------------------------
 
         let gameRecord = {
             scores: players.map(p => p.score),
@@ -280,10 +288,8 @@
         };
 
         if (editingIndex === -1) {
-            // 新規追加
             games.push(gameRecord);
         } else {
-            // 既存データの更新
             games[editingIndex] = gameRecord;
             editingIndex = -1;
             document.getElementById('submitBtn').innerText = "この半荘を記録する";
@@ -291,7 +297,6 @@
             document.getElementById('inputTitle').innerText = "半荘入力";
         }
 
-        // 入力欄をリセット
         for (let i = 0; i < 4; i++) {
             document.getElementById(`score${i}`).value = '';
             document.getElementById(`chip${i}`).value = '';
@@ -301,28 +306,22 @@
         renderTable();
     }
 
-    // 編集モードにする関数
     function editGame(index) {
         editingIndex = index;
         const game = games[index];
 
-        // データを入力欄に書き戻す
         for (let i = 0; i < 4; i++) {
             document.getElementById(`score${i}`).value = game.scores[i];
             document.getElementById(`chip${i}`).value = game.chips[i];
         }
 
-        // UIを編集モード用に切り替え
         document.getElementById('inputTitle').innerText = `${index + 1}半荘目のデータを編集・修正中`;
         document.getElementById('submitBtn').innerText = "変更を適用して更新する";
         document.getElementById('cancelBtn').style.display = "inline-block";
-
-        // 入力エリアへスクロール
         document.getElementById('inputTitle').scrollIntoView({ behavior: 'smooth' });
         checkTotalsLive();
     }
 
-    // 編集のキャンセル
     function cancelEdit() {
         editingIndex = -1;
         document.getElementById('submitBtn').innerText = "この半荘を記録する";
@@ -363,17 +362,17 @@
                 let pt = (Math.round(game.pts[i] * 10) / 10).toFixed(1);
                 let ptText = pt > 0 ? `+${pt}` : pt;
                 
-                // チップやウマの表記用符号
                 let cText = game.chips[i] > 0 ? `+${game.chips[i]}` : game.chips[i];
-                let uText = game.umas[i] > 0 ? `+${game.umas[i]}` : game.umas[i];
+                
+                // ウマが同点等分で小数になるケース（例: -15 など）を考慮してきれいに整形
+                let uFormatted = Number(game.umas[i].toFixed(2));
+                let uText = uFormatted > 0 ? `+${uFormatted}` : uFormatted;
 
-                // セル内に詳細テキストを埋め込む
                 td.innerHTML = `<strong>${ptText}pt</strong><span class="detail-text">(素点:${game.scores[i]} / チップ:${cText} / ウマ:${uText})</span>`;
                 tr.appendChild(td);
                 totals[i] += game.pts[i];
             }
 
-            // 操作ボタン（編集・削除）
             let tdAction = document.createElement('td');
             tdAction.className = 'action-btns';
 
@@ -396,7 +395,6 @@
 
         const rate = parseFloat(document.getElementById('rate').value) || 0;
 
-        // 合計と最終収支の更新
         for (let i = 0; i < 4; i++) {
             let totalFixed = (Math.round(totals[i] * 10) / 10).toFixed(1);
             let ptCell = document.getElementById(`totalPt${i}`);
