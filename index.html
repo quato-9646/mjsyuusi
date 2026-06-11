@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>麻雀収支計算アプリ</title>
+    <title>麻雀収支計算アプリ (Firebase版)</title>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
         body { font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', Meiryo, sans-serif; background-color: #f4f7f6; color: #333; margin: 0; padding: 20px; }
         .container { max-width: 900px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
@@ -11,7 +13,7 @@
         .settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 20px; }
         .setting-item { display: flex; flex-direction: column; }
         label { font-size: 0.9em; font-weight: bold; margin-bottom: 5px; color: #555; }
-        input[type="number"], input[type="text"] { padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 1em; }
+        input[type="number"], input[type="text"], input[type="password"] { padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 1em; }
         .players-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; background: #eef2f5; padding: 15px; border-radius: 8px; }
         .player-col { display: flex; flex-direction: column; gap: 8px; }
         .player-col input { width: 100%; box-sizing: border-box; }
@@ -33,80 +35,94 @@
         .delete-btn:hover { background-color: #c0392b; }
         .live-check { text-align: center; font-weight: bold; margin-bottom: 15px; padding: 8px; border-radius: 4px; background-color: #fadbd8; color: #c0392b; display: none; }
         .live-check.valid { background-color: #d4efdf; color: #27ae60; }
+        
+        .admin-lock-banner { background-color: #f1c40f; color: #2c3e50; padding: 10px; text-align: center; font-weight: bold; border-radius: 4px; margin-bottom: 20px; }
+        .admin-lock-banner.unlocked { background-color: #2ecc71; color: white; }
+        .admin-only { display: none; }
+        .sync-status { text-align: right; font-size: 0.8em; color: #7f8c8d; margin-top: -10px; margin-bottom: 10px; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <h1>麻雀収支計算アプリ</h1>
+    <div class="sync-status" id="syncStatus">🔄 データベース接続中...</div>
+
+    <div class="admin-lock-banner" id="lockBanner">
+        🔒 閲覧モード（データの追加・変更はできません）
+        <input type="password" id="inputPass" placeholder="パスワード" style="margin-left:10px; padding:3px; width:100px;">
+        <button onclick="checkPassword()" style="padding:4px 10px; font-size:0.8em; width:auto; margin-left:5px; background-color:#34495e;">解除</button>
+    </div>
 
     <h2>設定</h2>
     <div class="settings-grid">
         <div class="setting-item">
             <label>レート (1pt = X)</label>
-            <input type="number" id="rate" value="30" oninput="renderTable()">
+            <input type="number" id="rate" value="30" oninput="onConfigChange()" class="lockable" disabled>
         </div>
         <div class="setting-item">
             <label>開始点 (例:250)</label>
-            <input type="number" id="startScore" value="250" oninput="autoCalcFourthPlayer()">
+            <input type="number" id="startScore" value="250" oninput="onConfigChangeWithFourth()" class="lockable" disabled>
         </div>
         <div class="setting-item">
             <label>チップ (1枚 = X pt)</label>
-            <input type="number" step="0.1" id="chipRate" value="0.5">
+            <input type="number" step="0.1" id="chipRate" value="0.5" oninput="onConfigChange()" class="lockable" disabled>
         </div>
     </div>
     <div class="settings-grid">
         <div class="setting-item">
             <label>1着ウマ</label>
-            <input type="number" id="uma1" value="20">
+            <input type="number" id="uma1" value="20" oninput="onConfigChange()" class="lockable" disabled>
         </div>
         <div class="setting-item">
             <label>2着ウマ</label>
-            <input type="number" id="uma2" value="10">
+            <input type="number" id="uma2" value="10" oninput="onConfigChange()" class="lockable" disabled>
         </div>
         <div class="setting-item">
             <label>3着ウマ</label>
-            <input type="number" id="uma3" value="-10">
+            <input type="number" id="uma3" value="-10" oninput="onConfigChange()" class="lockable" disabled>
         </div>
         <div class="setting-item">
             <label>4着ウマ</label>
-            <input type="number" id="uma4" value="-20">
+            <input type="number" id="uma4" value="-20" oninput="onConfigChange()" class="lockable" disabled>
         </div>
     </div>
 
-    <h2 id="inputTitle">半荘入力</h2>
-    <div class="live-check" id="liveCheckStatus"></div>
+    <div class="admin-only" id="adminInputArea">
+        <h2 id="inputTitle">半荘入力</h2>
+        <div class="live-check" id="liveCheckStatus"></div>
 
-    <div class="players-grid" id="inputSection">
-        <div class="player-col">
-            <label>プレイヤー1</label>
-            <input type="text" id="name0" value="Aさん">
-            <input type="number" id="score0" placeholder="素点 (例: 230)" oninput="onScoreInput()">
-            <input type="number" id="chip0" placeholder="チップ増減" oninput="checkTotalsLive()">
+        <div class="players-grid" id="inputSection">
+            <div class="player-col">
+                <label>プレイヤー1</label>
+                <input type="text" id="name0" value="Aさん" oninput="onConfigChange()">
+                <input type="number" id="score0" placeholder="素点" oninput="onScoreInput()">
+                <input type="number" id="chip0" placeholder="チップ" oninput="checkTotalsLive()">
+            </div>
+            <div class="player-col">
+                <label>プレイヤー2</label>
+                <input type="text" id="name1" value="Bさん" oninput="onConfigChange()">
+                <input type="number" id="score1" placeholder="素点" oninput="onScoreInput()">
+                <input type="number" id="chip1" placeholder="チップ" oninput="checkTotalsLive()">
+            </div>
+            <div class="player-col">
+                <label>プレイヤー3</label>
+                <input type="text" id="name2" value="Cさん" oninput="onConfigChange()">
+                <input type="number" id="score2" placeholder="素点" oninput="onScoreInput()">
+                <input type="number" id="chip2" placeholder="チップ" oninput="checkTotalsLive()">
+            </div>
+            <div class="player-col">
+                <label>プレイヤー4</label>
+                <input type="text" id="name3" value="Dさん" oninput="onConfigChange()">
+                <input type="number" id="score3" placeholder="4人目自動" oninput="checkTotalsLive()">
+                <input type="number" id="chip3" placeholder="チップ" oninput="checkTotalsLive()">
+            </div>
         </div>
-        <div class="player-col">
-            <label>プレイヤー2</label>
-            <input type="text" id="name1" value="Bさん">
-            <input type="number" id="score1" placeholder="素点 (例: 290)" oninput="onScoreInput()">
-            <input type="number" id="chip1" placeholder="チップ増減" oninput="checkTotalsLive()">
-        </div>
-        <div class="player-col">
-            <label>プレイヤー3</label>
-            <input type="text" id="name2" value="Cさん">
-            <input type="number" id="score2" placeholder="素点 (例: 190)" oninput="onScoreInput()">
-            <input type="number" id="chip2" placeholder="チップ増減" oninput="checkTotalsLive()">
-        </div>
-        <div class="player-col">
-            <label>プレイヤー4</label>
-            <input type="text" id="name3" value="Dさん">
-            <input type="number" id="score3" placeholder="4人目自動計算" oninput="checkTotalsLive()">
-            <input type="number" id="chip3" placeholder="チップ増減" oninput="checkTotalsLive()">
-        </div>
-    </div>
 
-    <div class="btn-group">
-        <button id="submitBtn" onclick="addGame()">この半荘を記録する</button>
-        <button id="cancelBtn" class="cancel-btn" onclick="cancelEdit()" style="display: none;">編集をキャンセル</button>
+        <div class="btn-group">
+            <button id="submitBtn" onclick="addGame()">この半荘を記録する</button>
+            <button id="cancelBtn" class="cancel-btn" onclick="cancelEdit()" style="display: none;">編集をキャンセル</button>
+        </div>
     </div>
 
     <h2>成績表</h2>
@@ -119,7 +135,7 @@
                     <th id="th1">Bさん</th>
                     <th id="th2">Cさん</th>
                     <th id="th3">Dさん</th>
-                    <th>操作</th>
+                    <th class="admin-only">操作</th>
                 </tr>
             </thead>
             <tbody id="tableBody">
@@ -131,7 +147,7 @@
                     <td id="totalPt1">0.0</td>
                     <td id="totalPt2">0.0</td>
                     <td id="totalPt3">0.0</td>
-                    <td>-</td>
+                    <td class="admin-only">-</td>
                 </tr>
                 <tr class="money-row">
                     <td>最終収支</td>
@@ -139,7 +155,7 @@
                     <td id="money1">0</td>
                     <td id="money2">0</td>
                     <td id="money3">0</td>
-                    <td>-</td>
+                    <td class="admin-only">-</td>
                 </tr>
             </tfoot>
         </table>
@@ -147,13 +163,107 @@
 </div>
 
 <script>
+    // ★★★ パスワードの設定（お好みのものに変更してください） ★★★
+    const ADMIN_PASSWORD = "mjquato"; 
+
+    // ★★★ 【重要】Firebaseの設定貼り付けエリア ★★★
+    // ご自身のFirebaseコンソールで取得したオブジェクトに差し替えてください。
+    const firebaseConfig = {
+  apiKey: "AIzaSyA4QQW7h0jEuLvnEcWFzYRWWcvIuPZ1ucA",
+  authDomain: "mj-app-60c9d.firebaseapp.com",
+  projectId: "mj-app-60c9d",
+  storageBucket: "mj-app-60c9d.firebasestorage.app",
+  messagingSenderId: "297709702724",
+  appId: "1:297709702724:web:78726aab3a3020bb2bb611"
+};
+
+    // Firebaseの初期化
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
     let games = [];
     let editingIndex = -1;
+    let isAdmin = false;
+    let isInitialLoad = true;
 
-    for(let i=0; i<4; i++){
-        document.getElementById(`name${i}`).addEventListener('input', function(e){
-            document.getElementById(`th${i}`).innerText = e.target.value;
-        });
+    // クラウドデータベースからリアルタイムにデータを読み込む
+    db.ref("mahjong_data").on("value", (snapshot) => {
+        const data = snapshot.val();
+        document.getElementById("syncStatus").innerText = "⚡ クラウド同期中";
+        
+        if (data) {
+            // ゲームデータの同期
+            games = data.games || [];
+            
+            // 設定・プレイヤー名の同期（閲覧者にも即座に反映させる）
+            if (data.config) {
+                document.getElementById('rate').value = data.config.rate || 30;
+                document.getElementById('startScore').value = data.config.startScore || 250;
+                document.getElementById('chipRate').value = data.config.chipRate || 0.5;
+                document.getElementById('uma1').value = data.config.umas ? data.config.umas[0] : 20;
+                document.getElementById('uma2').value = data.config.umas ? data.config.umas[1] : 10;
+                document.getElementById('uma3').value = data.config.umas ? data.config.umas[2] : -10;
+                document.getElementById('uma4').value = data.config.umas ? data.config.umas[3] : -20;
+                
+                if (data.config.names) {
+                    for(let i=0; i<4; i++) {
+                        document.getElementById(`name${i}`).value = data.config.names[i];
+                        document.getElementById(`th${i}`).innerText = data.config.names[i];
+                    }
+                }
+            }
+            renderTable();
+        }
+        isInitialLoad = false;
+    });
+
+    // パスワードチェック
+    function checkPassword() {
+        const input = document.getElementById('inputPass').value;
+        if (input === ADMIN_PASSWORD) {
+            isAdmin = true;
+            document.getElementById('lockBanner').className = "admin-lock-banner unlocked";
+            document.getElementById('lockBanner').innerHTML = "🔓 管理者モード（編集がリアルタイム保存されます）";
+            document.querySelectorAll('.lockable').forEach(el => el.disabled = false);
+            document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'block');
+            renderTable();
+        } else {
+            alert("パスワードが違います。");
+        }
+    }
+
+    // 管理者がルールや名前を変更したときにデータベースへ保存する関数
+    function saveConfigToFirebase() {
+        if (!isAdmin || isInitialLoad) return;
+        const config = {
+            rate: parseFloat(document.getElementById('rate').value) || 0,
+            startScore: parseFloat(document.getElementById('startScore').value) || 0,
+            chipRate: parseFloat(document.getElementById('chipRate').value) || 0,
+            umas: [
+                parseFloat(document.getElementById('uma1').value) || 0,
+                parseFloat(document.getElementById('uma2').value) || 0,
+                parseFloat(document.getElementById('uma3').value) || 0,
+                parseFloat(document.getElementById('uma4').value) || 0
+            ],
+            names: [
+                document.getElementById('name0').value,
+                document.getElementById('name1').value,
+                document.getElementById('name2').value,
+                document.getElementById('name3').value
+            ]
+        };
+        db.ref("mahjong_data/config").set(config);
+    }
+
+    function onConfigChange() {
+        saveConfigToFirebase();
+        renderTable();
+    }
+
+    function onConfigChangeWithFourth() {
+        autoCalcFourthPlayer();
+        saveConfigToFirebase();
+        renderTable();
     }
 
     function onScoreInput() {
@@ -164,7 +274,6 @@
     function autoCalcFourthPlayer() {
         const startScore = parseFloat(document.getElementById('startScore').value) || 0;
         const targetTotal = startScore * 4;
-
         const s0 = document.getElementById('score0').value;
         const s1 = document.getElementById('score1').value;
         const s2 = document.getElementById('score2').value;
@@ -178,7 +287,6 @@
     function checkTotalsLive() {
         const startScore = parseFloat(document.getElementById('startScore').value) || 0;
         const targetScoreTotal = startScore * 4;
-
         let totalScore = 0;
         let totalChip = 0;
         let hasEmpty = false;
@@ -186,9 +294,7 @@
         for (let i = 0; i < 4; i++) {
             let s = document.getElementById(`score${i}`).value;
             let c = document.getElementById(`chip${i}`).value;
-            if (s === "" || c === "") {
-                hasEmpty = true;
-            }
+            if (s === "" || c === "") hasEmpty = true;
             totalScore += parseFloat(s) || 0;
             totalChip += parseFloat(c) || 0;
         }
@@ -203,15 +309,15 @@
         if (totalScore === targetScoreTotal && totalChip === 0) {
             statusDiv.className = "live-check valid";
             statusDiv.innerText = `【チェックOK】素点合計: ${totalScore} / チップ合計: ${totalChip}`;
-            return true;
         } else {
             statusDiv.className = "live-check";
             statusDiv.innerText = `【不整合あり】素点合計: ${totalScore} (目標:${targetScoreTotal}) / チップ合計: ${totalChip} (目標:0)`;
-            return false;
         }
     }
 
     function addGame() {
+        if (!isAdmin) return;
+
         const startScore = parseFloat(document.getElementById('startScore').value) || 0;
         const targetScoreTotal = startScore * 4;
         const chipRate = parseFloat(document.getElementById('chipRate').value) || 0;
@@ -230,12 +336,9 @@
         for (let i = 0; i < 4; i++) {
             let scoreStr = document.getElementById(`score${i}`).value;
             let chipStr = document.getElementById(`chip${i}`).value;
-            
             if (scoreStr === "" || chipStr === "") hasEmpty = true;
-
             let s = parseFloat(scoreStr) || 0;
             let c = parseFloat(chipStr) || 0;
-            
             totalScore += s;
             totalChip += c;
             players.push({ index: i, score: s, chip: c, pt: 0, uma: 0 });
@@ -247,38 +350,23 @@
         }
 
         if (totalScore !== targetScoreTotal || totalChip !== 0) {
-            alert(`【入力エラー】合計値が正しくありません。\n・素点合計: ${totalScore} (目標: ${targetScoreTotal})\n・チップ合計: ${totalChip} (目標: 0)`);
+            alert(`【入力エラー】合計値が正しくありません。`);
             return;
         }
 
-        // --- 同点ウマ等分ロジックの追加 ---
-        // 1. 各プレイヤーのスコア一覧を取得し、降順（高い順）にソート
         let sortedScores = players.map(p => p.score).sort((a, b) => b - a);
-
-        // 2. プレイヤーごとに「そのスコアがソート順のどこに位置するか」を調べ、同じスコアの枠（ランク）を特定する
         players.forEach(p => {
             let rankIndices = [];
             sortedScores.forEach((score, idx) => {
-                if (score === p.score) {
-                    rankIndices.push(idx); // 同点プレイヤーが占める本来の順位インデックス（0=1着, 1=2着, 2=3着, 3=4着）を全抽出
-                }
+                if (score === p.score) rankIndices.push(idx);
             });
-
-            // 当てはまる順位のウマをすべて合計する
             let sumUma = 0;
-            rankIndices.forEach(idx => {
-                sumUma += umas[idx];
-            });
-
-            // ウマを同点人数で割る（頭割り）
+            rankIndices.forEach(idx => { sumUma += umas[idx]; });
             p.uma = sumUma / rankIndices.length;
-
-            // 各自の合計ポイントを算出
             let basePt = (p.score - startScore) / 10;
             let chipPt = p.chip * chipRate;
             p.pt = basePt + p.uma + chipPt;
         });
-        // ---------------------------------
 
         let gameRecord = {
             scores: players.map(p => p.score),
@@ -297,24 +385,25 @@
             document.getElementById('inputTitle').innerText = "半荘入力";
         }
 
+        // Firebaseへ最新データをプッシュ
+        db.ref("mahjong_data/games").set(games);
+        saveConfigToFirebase();
+
         for (let i = 0; i < 4; i++) {
             document.getElementById(`score${i}`).value = '';
             document.getElementById(`chip${i}`).value = '';
         }
         document.getElementById('liveCheckStatus').style.display = "none";
-
-        renderTable();
     }
 
     function editGame(index) {
+        if (!isAdmin) return;
         editingIndex = index;
         const game = games[index];
-
         for (let i = 0; i < 4; i++) {
             document.getElementById(`score${i}`).value = game.scores[i];
             document.getElementById(`chip${i}`).value = game.chips[i];
         }
-
         document.getElementById('inputTitle').innerText = `${index + 1}半荘目のデータを編集・修正中`;
         document.getElementById('submitBtn').innerText = "変更を適用して更新する";
         document.getElementById('cancelBtn').style.display = "inline-block";
@@ -327,7 +416,6 @@
         document.getElementById('submitBtn').innerText = "この半荘を記録する";
         document.getElementById('cancelBtn').style.display = "none";
         document.getElementById('inputTitle').innerText = "半荘入力";
-
         for (let i = 0; i < 4; i++) {
             document.getElementById(`score${i}`).value = '';
             document.getElementById(`chip${i}`).value = '';
@@ -336,19 +424,17 @@
     }
 
     function deleteGame(index) {
+        if (!isAdmin) return;
         if(confirm(`${index + 1}半荘目の記録を削除しますか？`)){
-            if (editingIndex === index) {
-                cancelEdit();
-            }
+            if (editingIndex === index) cancelEdit();
             games.splice(index, 1);
-            renderTable();
+            db.ref("mahjong_data/games").set(games);
         }
     }
 
     function renderTable() {
         const tbody = document.getElementById('tableBody');
         tbody.innerHTML = '';
-        
         let totals = [0, 0, 0, 0];
 
         games.forEach((game, index) => {
@@ -361,10 +447,7 @@
                 let td = document.createElement('td');
                 let pt = (Math.round(game.pts[i] * 10) / 10).toFixed(1);
                 let ptText = pt > 0 ? `+${pt}` : pt;
-                
                 let cText = game.chips[i] > 0 ? `+${game.chips[i]}` : game.chips[i];
-                
-                // ウマが同点等分で小数になるケース（例: -15 など）を考慮してきれいに整形
                 let uFormatted = Number(game.umas[i].toFixed(2));
                 let uText = uFormatted > 0 ? `+${uFormatted}` : uFormatted;
 
@@ -373,28 +456,30 @@
                 totals[i] += game.pts[i];
             }
 
-            let tdAction = document.createElement('td');
-            tdAction.className = 'action-btns';
+            if (isAdmin) {
+                let tdAction = document.createElement('td');
+                tdAction.className = 'action-btns admin-only';
+                tdAction.style.display = 'table-cell';
 
-            let editBtn = document.createElement('button');
-            editBtn.className = 'edit-btn';
-            editBtn.innerText = '編集';
-            editBtn.onclick = () => editGame(index);
+                let editBtn = document.createElement('button');
+                editBtn.className = 'edit-btn';
+                editBtn.innerText = '編集';
+                editBtn.onclick = () => editGame(index);
 
-            let delBtn = document.createElement('button');
-            delBtn.className = 'delete-btn';
-            delBtn.innerText = '削除';
-            delBtn.onclick = () => deleteGame(index);
+                let delBtn = document.createElement('button');
+                delBtn.className = 'delete-btn';
+                delBtn.innerText = '削除';
+                delBtn.onclick = () => deleteGame(index);
 
-            tdAction.appendChild(editBtn);
-            tdAction.appendChild(delBtn);
-            tr.appendChild(tdAction);
+                tdAction.appendChild(editBtn);
+                tdAction.appendChild(delBtn);
+                tr.appendChild(tdAction);
+            }
 
             tbody.appendChild(tr);
         });
 
         const rate = parseFloat(document.getElementById('rate').value) || 0;
-
         for (let i = 0; i < 4; i++) {
             let totalFixed = (Math.round(totals[i] * 10) / 10).toFixed(1);
             let ptCell = document.getElementById(`totalPt${i}`);
